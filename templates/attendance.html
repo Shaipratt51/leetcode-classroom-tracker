@@ -1,0 +1,88 @@
+{% extends 'base.html' %}
+
+{% block title %}Class Attendance | LeetCode Class Tracker{% endblock %}
+
+{% block content %}
+<div class="card-glass p-4 animate-fade-in">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4">
+        <div>
+            <h2 class="mb-1 fs-3"><i class="bi bi-calendar-check-fill text-easy me-2"></i>Daily Solving Attendance</h2>
+            <p class="text-secondary-custom mb-0">Track student solving consistency day-by-day for <strong>{{ month_name }}</strong>.</p>
+        </div>
+        
+        <!-- Month Selector Form -->
+        <form action="{{ url_for('attendance_view') }}" method="GET" class="mt-3 mt-md-0 d-flex gap-2">
+            <select name="month" class="form-select bg-dark text-light border-secondary border-opacity-35 rounded-pill px-3 py-1 fs-7" style="width: auto;">
+                {% for m_num, m_name in months_list %}
+                <option value="{{ m_num }}" {% if active_month == m_num %}selected{% endif %}>{{ m_name }}</option>
+                {% endfor %}
+            </select>
+            <select name="year" class="form-select bg-dark text-light border-secondary border-opacity-35 rounded-pill px-3 py-1 fs-7" style="width: auto;">
+                {% for y in years_list %}
+                <option value="{{ y }}" {% if active_year == y %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn btn-sm btn-easy text-dark fw-bold rounded-pill px-3">Filter</button>
+        </form>
+    </div>
+
+    <!-- Attendance Grid Table -->
+    <div class="table-responsive" style="max-height: 600px; overflow-y: auto;">
+        <table class="table table-bordered text-center align-middle" style="border-color: rgba(255, 255, 255, 0.08);">
+            <thead class="sticky-top bg-dark" style="z-index: 10;">
+                <tr class="text-secondary-custom fs-8 fw-bold">
+                    <th scope="col" style="text-align: left; min-width: 150px; background: inherit; left: 0; position: sticky; z-index: 11;" class="border-end shadow-sm">Student</th>
+                    {% for day in days %}
+                    <th scope="col" class="cell-att">{{ day }}</th>
+                    {% endfor %}
+                    <th scope="col" class="px-2" style="min-width: 60px;">Solves</th>
+                    <th scope="col" class="px-2" style="min-width: 60px;">Rate</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for record in attendance_records %}
+                <tr>
+                    <td style="text-align: left; background: inherit; left: 0; position: sticky; z-index: 5;" class="fw-bold border-end shadow-sm">
+                        <a href="{{ url_for('student_profile', student_id=record.student.id) }}" class="text-decoration-none text-reset">
+                            {{ record.student.name }}
+                        </a>
+                    </td>
+                    
+                    {% for solved in record.days_solved %}
+                    <td class="cell-att">
+                        {% if solved %}
+                        <span class="text-success" title="Solved problems"><i class="bi bi-check-circle-fill"></i></span>
+                        {% else %}
+                        <span class="text-danger border-opacity-10" title="No solves"><i class="bi bi-x-circle"></i></span>
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                    
+                    <td class="fw-bold text-easy font-monospace fs-7">{{ record.total_solves_this_month }}</td>
+                    <td class="fw-bold text-info font-monospace fs-7">{{ record.solve_rate }}%</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="{{ days|length + 3 }}" class="text-center text-secondary-custom py-5">
+                        <i class="bi bi-calendar-x display-6 mb-3"></i>
+                        <p>No student data available for attendance tracking.</p>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <div class="mt-4 d-flex flex-wrap gap-4 justify-content-center justify-content-md-start fs-7 text-secondary-custom">
+        <div class="d-flex align-items-center gap-1">
+            <span class="text-success"><i class="bi bi-check-circle-fill"></i></span> Solved at least 1 problem
+        </div>
+        <div class="d-flex align-items-center gap-1">
+            <span class="text-danger"><i class="bi bi-x-circle"></i></span> No solves recorded
+        </div>
+        <div class="ms-md-auto font-monospace">
+            * Rate = percentage of active days in the month.
+        </div>
+    </div>
+</div>
+{% endblock %}

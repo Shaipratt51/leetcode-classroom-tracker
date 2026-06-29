@@ -1,0 +1,158 @@
+{% extends 'base.html' %}
+
+{% block title %}Compare Students | LeetCode Class Tracker{% endblock %}
+
+{% block content %}
+<div class="card-glass p-4 mb-4 animate-fade-in">
+    <h2 class="mb-1 fs-3"><i class="bi bi-arrow-left-right text-easy me-2"></i>Compare Two Students</h2>
+    <p class="text-secondary-custom mb-4">Select any two students from the dropdowns below to analyze and compare their progress side-by-side.</p>
+
+    <!-- Compare Selection Form -->
+    <form action="{{ url_for('compare_view') }}" method="GET" class="row g-3 align-items-end">
+        <div class="col-md-5">
+            <label for="s1" class="form-label fw-semibold text-secondary-custom">Student A</label>
+            <select name="s1" id="s1" class="form-select bg-dark text-light border-secondary border-opacity-35 rounded-3 py-2">
+                <option value="">-- Select Student --</option>
+                {% for student in all_students %}
+                <option value="{{ student.id }}" {% if s1 and s1.id == student.id %}selected{% endif %}>{{ student.name }} ({{ student.leetcode_username }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class="col-md-2 text-center mb-2 d-none d-md-block">
+            <span class="fs-4 fw-extrabold text-secondary-custom">VS</span>
+        </div>
+        
+        <div class="col-md-5">
+            <label for="s2" class="form-label fw-semibold text-secondary-custom">Student B</label>
+            <select name="s2" id="s2" class="form-select bg-dark text-light border-secondary border-opacity-35 rounded-3 py-2">
+                <option value="">-- Select Student --</option>
+                {% for student in all_students %}
+                <option value="{{ student.id }}" {% if s2 and s2.id == student.id %}selected{% endif %}>{{ student.name }} ({{ student.leetcode_username }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class="col-12 text-center mt-4">
+            <button type="submit" class="btn btn-easy text-dark fw-bold rounded-pill px-5 py-2">
+                Compare Students <i class="bi bi-bar-chart-fill ms-1"></i>
+            </button>
+        </div>
+    </form>
+</div>
+
+{% if s1 and s2 %}
+<div class="row g-4 animate-fade-in">
+    <!-- Comparison Table (Left) -->
+    <div class="col-lg-7">
+        <div class="card-glass p-4 h-100">
+            <h3 class="fs-5 mb-4 text-center text-md-start"><i class="bi bi-table text-easy me-2"></i>Side-by-Side Analysis</h3>
+            
+            <div class="table-responsive">
+                <table class="table text-center align-middle" style="border-collapse: separate; border-spacing: 0 10px;">
+                    <thead>
+                        <tr class="text-secondary-custom uppercase fs-7 fw-semibold border-bottom">
+                            <th style="width: 35%; text-align: left;">Metric</th>
+                            <th style="width: 32.5%;" class="text-easy">{{ s1.name }}</th>
+                            <th style="width: 32.5%;" class="text-danger">{{ s2.name }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Avatars -->
+                        <tr>
+                            <td style="text-align: left;" class="fw-bold">Profile</td>
+                            <td>
+                                <img src="{{ s1.avatar_url or 'https://assets.leetcode.com/users/default_avatar.png' }}" alt="{{ s1.name }}" class="rounded-circle border border-easy border-2 mb-2" style="width: 60px; height: 60px; object-fit: cover;">
+                                <div class="fs-7 text-secondary-custom">@{{ s1.leetcode_username }}</div>
+                            </td>
+                            <td>
+                                <img src="{{ s2.avatar_url or 'https://assets.leetcode.com/users/default_avatar.png' }}" alt="{{ s2.name }}" class="rounded-circle border border-danger border-2 mb-2" style="width: 60px; height: 60px; object-fit: cover;">
+                                <div class="fs-7 text-secondary-custom">@{{ s2.leetcode_username }}</div>
+                            </td>
+                        </tr>
+                        <!-- Total Solved -->
+                        <tr class="border-top">
+                            <td style="text-align: left;" class="fw-semibold text-secondary-custom">Total Solved</td>
+                            <td class="fw-extrabold fs-5 text-easy">{{ s1.total_solved }}</td>
+                            <td class="fw-extrabold fs-5 text-danger">{{ s2.total_solved }}</td>
+                        </tr>
+                        <!-- Easy -->
+                        <tr>
+                            <td style="text-align: left;" class="fw-semibold text-secondary-custom">Easy Solved</td>
+                            <td class="fw-bold text-easy">{{ s1.easy_solved }}</td>
+                            <td class="fw-bold text-easy">{{ s2.easy_solved }}</td>
+                        </tr>
+                        <!-- Medium -->
+                        <tr>
+                            <td style="text-align: left;" class="fw-semibold text-secondary-custom">Medium Solved</td>
+                            <td class="fw-bold text-medium">{{ s1.medium_solved }}</td>
+                            <td class="fw-bold text-medium">{{ s2.medium_solved }}</td>
+                        </tr>
+                        <!-- Hard -->
+                        <tr>
+                            <td style="text-align: left;" class="fw-semibold text-secondary-custom">Hard Solved</td>
+                            <td class="fw-bold text-hard">{{ s1.hard_solved }}</td>
+                            <td class="fw-bold text-hard">{{ s2.hard_solved }}</td>
+                        </tr>
+                        <!-- Acceptance -->
+                        <tr>
+                            <td style="text-align: left;" class="fw-semibold text-secondary-custom">Acceptance Rate</td>
+                            <td class="font-monospace fw-semibold">{{ s1.acceptance_rate }}%</td>
+                            <td class="font-monospace fw-semibold">{{ s2.acceptance_rate }}%</td>
+                        </tr>
+                        <!-- Current Streak -->
+                        <tr>
+                            <td style="text-align: left;" class="fw-semibold text-secondary-custom">Current Streak</td>
+                            <td class="fw-bold text-warning">{{ s1.current_streak }}🔥</td>
+                            <td class="fw-bold text-warning">{{ s2.current_streak }}🔥</td>
+                        </tr>
+                        <!-- Longest Streak -->
+                        <tr>
+                            <td style="text-align: left;" class="fw-semibold text-secondary-custom">Longest Streak</td>
+                            <td class="fw-bold text-warning">{{ s1.max_streak }} days</td>
+                            <td class="fw-bold text-warning">{{ s2.max_streak }} days</td>
+                        </tr>
+                        <!-- Contest Rating -->
+                        <tr class="border-bottom">
+                            <td style="text-align: left;" class="fw-semibold text-secondary-custom">Contest Rating</td>
+                            <td class="font-monospace fw-bold text-info">
+                                {% if s1.contest_rating > 0 %}{{ s1.contest_rating }}{% else %}-{% endif %}
+                            </td>
+                            <td class="font-monospace fw-bold text-info">
+                                {% if s2.contest_rating > 0 %}{{ s2.contest_rating }}{% else %}-{% endif %}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Radar Chart (Right) -->
+    <div class="col-lg-5">
+        <div class="card-glass p-4 h-100 d-flex flex-column justify-content-between">
+            <h3 class="fs-5 mb-4 text-center"><i class="bi bi-compass-fill text-easy me-2"></i>Visual Comparison</h3>
+            <div class="chart-container-radar flex-grow-1 d-flex align-items-center justify-content-center" style="position: relative; height: 350px; width: 100%;">
+                <!-- We pass normalized stats to fit radar better.
+                     Let's scale ratings so they compare cleanly:
+                     Stats array structure: [Total, Easy, Medium, Hard, Acceptance, Streak, ContestRating/10] -->
+                <canvas id="compareChart" 
+                        data-s1-name="{{ s1.name }}" 
+                        data-s2-name="{{ s2.name }}"
+                        data-s1-stats="[{{ s1.total_solved }}, {{ s1.easy_solved }}, {{ s1.medium_solved }}, {{ s1.hard_solved }}, {{ s1.acceptance_rate }}, {{ s1.current_streak }}, {{ s1.contest_rating // 10 }}]"
+                        data-s2-stats="[{{ s2.total_solved }}, {{ s2.easy_solved }}, {{ s2.medium_solved }}, {{ s2.hard_solved }}, {{ s2.acceptance_rate }}, {{ s2.current_streak }}, {{ s2.contest_rating // 10 }}]">
+                </canvas>
+            </div>
+            <div class="fs-8 text-secondary-custom text-center mt-3">
+                <i class="bi bi-info-circle me-1"></i> Contest Rating is scaled (value / 10) for overlay proportions.
+            </div>
+        </div>
+    </div>
+</div>
+{% elif s1 or s2 %}
+<div class="alert alert-info text-center py-4 card-glass border-opacity-10 mt-4">
+    <i class="bi bi-info-circle-fill display-6 text-info mb-2 d-block"></i>
+    <h5>Please select BOTH students to run the comparison.</h5>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,165 @@
+{% extends 'base.html' %}
+
+{% block title %}Admin Panel | LeetCode Class Tracker{% endblock %}
+
+{% block content %}
+<div class="row g-4 mb-4 animate-fade-in">
+    <!-- Admin Controls Grid -->
+    <div class="col-lg-8">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, msg in messages %}
+                    <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show rounded-3" role="alert">
+                        {{ msg }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Download Classroom Reports Card -->
+        <div class="card-glass p-4">
+            <h3 class="fs-4 mb-3"><i class="bi bi-download text-info me-2"></i>Download Classroom Reports</h3>
+            <p class="text-secondary-custom fs-7 mb-4">
+                Export the latest student statistics in standard CSV, Excel, or PDF formats. 
+                Reports include student registration numbers, total solved counts, streak data, and last update times.
+            </p>
+            
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <a href="{{ url_for('download_report', format='csv') }}" class="btn-download-report w-100 fw-bold fs-7 text-decoration-none">
+                        <i class="bi bi-filetype-csv fs-3 mb-2 text-warning d-block"></i> Export CSV
+                    </a>
+                </div>
+                <div class="col-md-6">
+                    <a href="{{ url_for('download_report', format='pdf') }}" class="btn-download-report w-100 fw-bold fs-7 text-decoration-none">
+                        <i class="bi bi-file-pdf fs-3 mb-2 text-danger d-block"></i> Export PDF
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status & Sync Panel (Right) -->
+    <div class="col-lg-4">
+        <div class="card-glass p-4 h-100 d-flex flex-column justify-content-between">
+            <div>
+                <h3 class="fs-5 mb-4"><i class="bi bi-database-fill-gear text-easy me-2"></i>Sync Status</h3>
+                
+                <div class="d-flex justify-content-between mb-3 border-bottom border-secondary border-opacity-10 pb-2">
+                    <span class="text-secondary-custom">Active Students</span>
+                    <span class="fw-bold">{{ total_students }}</span>
+                </div>
+                <div class="d-flex justify-content-between mb-3 border-bottom border-secondary border-opacity-10 pb-2">
+                    <span class="text-secondary-custom">Last Updated</span>
+                    <span class="fw-semibold text-easy fs-7" id="lastRunText">{{ last_run_formatted }}</span>
+                </div>
+                
+                <!-- Progress Indicator for Background Sync -->
+                <div id="progressSection" class="mt-4 {% if not update_status.in_progress %}d-none{% endif %}">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="fs-7 text-secondary-custom" id="progressStudent">Syncing Student Name...</span>
+                        <span class="fs-7 fw-bold font-monospace text-easy" id="progressPercent">0%</span>
+                    </div>
+                    <div class="progress rounded-pill mb-3" style="height: 10px;">
+                        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-easy" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <div class="fs-8 text-secondary-custom text-center">
+                        <i class="bi bi-info-circle me-1"></i> Running in background. Do not refresh.
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <form action="{{ url_for('trigger_update') }}" method="POST" id="updateForm">
+                    <button type="submit" class="btn btn-warning text-dark fw-bold rounded-pill w-100 py-3" id="updateBtn" {% if update_status.in_progress %}disabled{% endif %}>
+                        <i class="bi bi-arrow-repeat me-1"></i> Update All Profiles
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const updateForm = document.getElementById("updateForm");
+    const updateBtn = document.getElementById("updateBtn");
+    const progressSection = document.getElementById("progressSection");
+    const progressStudent = document.getElementById("progressStudent");
+    const progressPercent = document.getElementById("progressPercent");
+    const progressBar = document.getElementById("progressBar");
+    const lastRunText = document.getElementById("lastRunText");
+
+    let pollInterval = null;
+
+    // Check if update is currently active on page load
+    {% if update_status.in_progress %}
+    startPolling();
+    {% endif %}
+
+    updateForm.addEventListener("submit", (e) => {
+        // Prevent default submit to handle asynchronously
+        e.preventDefault();
+        
+        updateBtn.disabled = true;
+        progressSection.classList.remove("d-none");
+        
+        // Post request to trigger
+        fetch("{{ url_for('trigger_update') }}", {
+            method: "POST"
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === "started") {
+                startPolling();
+            } else {
+                alert(data.message);
+                updateBtn.disabled = false;
+            }
+        })
+        .catch(err => {
+            console.error("Error triggering update:", err);
+            updateBtn.disabled = false;
+        });
+    });
+
+    function startPolling() {
+        if (pollInterval) clearInterval(pollInterval);
+        
+        pollInterval = setInterval(() => {
+            fetch("{{ url_for('get_update_status') }}")
+            .then(res => res.json())
+            .then(data => {
+                if (data.in_progress) {
+                    updateBtn.disabled = true;
+                    progressSection.classList.remove("d-none");
+                    
+                    const pct = data.total > 0 ? Math.round((data.processed / data.total) * 100) : 0;
+                    progressStudent.innerText = `Syncing: ${data.current_student || 'Initializing...'}`;
+                    progressPercent.innerText = `${pct}% (${data.processed}/${data.total})`;
+                    progressBar.style.width = `${pct}%`;
+                } else {
+                    clearInterval(pollInterval);
+                    updateBtn.disabled = false;
+                    progressSection.classList.add("d-none");
+                    progressBar.style.width = "0%";
+                    
+                    if (data.last_run) {
+                        lastRunText.innerText = data.last_run;
+                    }
+                    
+                    // Reload page to reflect updated statistics
+                    location.reload();
+                }
+            })
+            .catch(err => {
+                console.error("Status polling error:", err);
+            });
+        }, 1500);
+    }
+});
+</script>
+{% endblock %}

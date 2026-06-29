@@ -1,0 +1,709 @@
+import os
+import io
+import threading
+import calendar
+from datetime import datetime, date, timezone, timedelta
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
+from models import db, Student, Submission, DailySnapshot, Notification, WeeklyReport
+from scheduler import init_scheduler, run_update_task, update_status, generate_weekly_report
+from leetcode import fetch_leetcode_data, parse_submission_calendar
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'lc-classroom-tracker-secret-1234'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db.init_app(app)
+
+# Helper function for human-readable time difference
+def time_ago(dt):
+    if not dt:
+        return "Never"
+    now = datetime.now()
+    diff = now - dt
+    
+    if diff.days > 0:
+        if diff.days == 1:
+            return "1 day ago"
+        return f"{diff.days} days ago"
+        
+    seconds = diff.seconds
+    hours = seconds // 3600
+    if hours > 0:
+        if hours == 1:
+            return "1 hour ago"
+        return f"{hours} hours ago"
+        
+    minutes = seconds // 60
+    if minutes > 0:
+        if minutes == 1:
+            return "1 min ago"
+        return f"{minutes} mins ago"
+        
+    return "just now"
+
+@app.template_filter('time_ago')
+def time_ago_filter(dt):
+    if not dt:
+        return "Never"
+    return time_ago(dt)
+
+# Fetch Daily Challenge Helper
+def fetch_daily_challenge():
+    url = "https://leetcode.com/graphql"
+    query = """
+    query questionOfToday {
+      activeDailyCodingChallengeQuestion {
+        link
+        question {
+          title
+          titleSlug
+          difficulty
+        }
+      }
+    }
+    """
+    try:
+        import requests
+        res = requests.post(url, json={"query": query}, headers={"User-Agent": "Mozilla/5.0"}, timeout=8)
+        if res.status_code == 200:
+            q_data = res.json().get("data", {}).get("activeDailyCodingChallengeQuestion", {})
+            q = q_data.get("question", {})
+            if q:
+                return {
+                    "title": q.get("title"),
+                    "title_slug": q.get("titleSlug"),
+                    "difficulty": q.get("difficulty")
+                }
+    except Exception as e:
+        print(f"Error fetching daily challenge: {e}")
+    # Default placeholder
+    return {
+        "title": "Two Sum",
+        "title_slug": "two-sum",
+        "difficulty": "Easy"
+    }
+
+# ROUTES
+
+@app.route('/')
+def dashboard():
+    total_students = Student.query.filter_by(is_active=True).count()
+    
+    # Calculate classroom aggregates
+    total_solves = db.session.query(db.func.sum(Student.total_solved)).scalar() or 0
+    
+    # Today's solves
+    today_date = date.today()
+    today_solves = db.session.query(db.func.sum(DailySnapshot.daily_solves)).filter(DailySnapshot.date == today_date).scalar() or 0
+    
+    # Top 5 solvers for leaderboard snippet
+    top_students = Student.query.filter_by(is_active=True).order_by(Student.total_solved.desc()).limit(5).all()
+    # Add dynamic today's solves to top students
+    for student in top_students:
+        snap = DailySnapshot.query.filter_by(student_id=student.id, date=today_date).first()
+        student.today_solves = snap.daily_solves if snap else 0
+
+    # Recent submissions feed (Instagram-like)
+    recent_submissions = Submission.query.order_by(Submission.timestamp.desc()).limit(25).all()
+    for sub in recent_submissions:
+        sub.time_ago = time_ago(sub.timestamp)
+
+    # Notifications feed (milestones crossed)
+    notifications = Notification.query.order_by(Notification.timestamp.desc()).limit(15).all()
+    for notif in notifications:
+        notif.time_ago = time_ago(notif.timestamp)
+
+    # Weekly report summary
+    latest_weekly_report = WeeklyReport.query.order_by(WeeklyReport.week_start.desc()).first()
+
+    # Daily challenge details
+    daily_challenge = fetch_daily_challenge()
+    
+    # Count of students who completed the daily challenge today
+    challenge_completed_count = db.session.query(Submission.student_id).filter(
+        Submission.title_slug == daily_challenge['title_slug'],
+        db.func.date(Submission.timestamp) == today_date
+    ).distinct().count()
+
+    return render_template(
+        'dashboard.html',
+        total_students=total_students,
+        total_solves=total_solves,
+        today_solves=today_solves,
+        top_students=top_students,
+        recent_submissions=recent_submissions,
+        notifications=notifications,
+        weekly_report=latest_weekly_report,
+        daily_challenge=daily_challenge,
+        challenge_completed_count=challenge_completed_count
+    )
+
+@app.route('/leaderboard')
+def leaderboard_view():
+    active_filter = request.args.get('filter', 'overall')
+    students = Student.query.filter_by(is_active=True).all()
+    
+    today_val = date.today()
+    seven_days_ago = today_val - timedelta(days=7)
+    thirty_days_ago = today_val - timedelta(days=30)
+    
+    # Dynamically inject temporary variables for sorting/rendering
+    for s in students:
+        today_snap = DailySnapshot.query.filter_by(student_id=s.id, date=today_val).first()
+        s.today_solves = today_snap.daily_solves if today_snap else 0
+        
+        weekly_snaps = DailySnapshot.query.filter(
+            DailySnapshot.student_id == s.id,
+            DailySnapshot.date >= seven_days_ago
+        ).all()
+        s.weekly_solves = sum(snap.daily_solves for snap in weekly_snaps)
+        
+        monthly_snaps = DailySnapshot.query.filter(
+            DailySnapshot.student_id == s.id,
+            DailySnapshot.date >= thirty_days_ago
+        ).all()
+        s.monthly_solves = sum(snap.daily_solves for snap in monthly_snaps)
+        s.time_ago = time_ago(s.last_updated) if s.last_updated else "Never"
+        
+    # Sort students according to active filter
+    if active_filter == 'today':
+        students.sort(key=lambda x: x.today_solves, reverse=True)
+    elif active_filter == 'week':
+        students.sort(key=lambda x: x.weekly_solves, reverse=True)
+    elif active_filter == 'month':
+        students.sort(key=lambda x: x.monthly_solves, reverse=True)
+    elif active_filter == 'easy':
+        students.sort(key=lambda x: x.easy_solved, reverse=True)
+    elif active_filter == 'medium':
+        students.sort(key=lambda x: x.medium_solved, reverse=True)
+    elif active_filter == 'hard':
+        students.sort(key=lambda x: x.hard_solved, reverse=True)
+    elif active_filter == 'acceptance':
+        students.sort(key=lambda x: x.acceptance_rate, reverse=True)
+    elif active_filter == 'rating':
+        students.sort(key=lambda x: x.contest_rating, reverse=True)
+    else: # overall
+        students.sort(key=lambda x: x.total_solved, reverse=True)
+        
+    return render_template(
+        'leaderboard.html',
+        students=students,
+        active_filter=active_filter
+    )
+
+@app.route('/student/<int:student_id>')
+def student_profile(student_id):
+    student = Student.query.get_or_404(student_id)
+    
+    # Class Rank
+    all_students = Student.query.filter_by(is_active=True).order_by(Student.total_solved.desc()).all()
+    class_rank = next((idx + 1 for idx, s in enumerate(all_students) if s.id == student.id), "-")
+    
+    # Submissions
+    submissions = Submission.query.filter_by(student_id=student.id).order_by(Submission.timestamp.desc()).limit(20).all()
+    for sub in submissions:
+        sub.time_ago = time_ago(sub.timestamp)
+        
+    # Today, weekly, monthly solves
+    today_val = date.today()
+    
+    today_snap = DailySnapshot.query.filter_by(student_id=student.id, date=today_val).first()
+    today_solves = today_snap.daily_solves if today_snap else 0
+    
+    weekly_snaps = DailySnapshot.query.filter(
+        DailySnapshot.student_id == student.id,
+        DailySnapshot.date >= today_val - timedelta(days=7)
+    ).all()
+    weekly_solves = sum(snap.daily_solves for snap in weekly_snaps)
+    
+    monthly_snaps = DailySnapshot.query.filter(
+        DailySnapshot.student_id == student.id,
+        DailySnapshot.date >= today_val - timedelta(days=30)
+    ).all()
+    monthly_solves = sum(snap.daily_solves for snap in monthly_snaps)
+
+    # 1. Reconstruct past 30 days progress graph data
+    temp_list = []
+    running_total = student.total_solved
+    for i in range(30):
+        d = today_val - timedelta(days=i)
+        snap = DailySnapshot.query.filter_by(student_id=student.id, date=d).first()
+        if snap and snap.total_solved > 0:
+            running_total = snap.total_solved
+            
+        temp_list.append((d.strftime('%b %d'), running_total))
+        # Go backwards
+        if snap:
+            running_total -= snap.daily_solves
+            
+    temp_list.reverse()
+    graph_dates = [item[0] for item in temp_list]
+    graph_counts = [item[1] for item in temp_list]
+
+    # 2. Reconstruct Heatmap Data (371 cells / 53 weeks)
+    start_date = today_val - timedelta(days=364)
+    # Align to Sunday
+    start_date -= timedelta(days=(start_date.weekday() + 1) % 7)
+    
+    # Load all snapshots of student to cache dates lookup
+    all_snaps = DailySnapshot.query.filter_by(student_id=student.id).all()
+    snap_map = {snap.date: snap.daily_solves for snap in all_snaps}
+    
+    heatmap_days = []
+    curr = start_date
+    while len(heatmap_days) < 371:
+        count = snap_map.get(curr, 0)
+        cell_class = "cell-empty"
+        if count > 0:
+            if count <= 2: cell_class = "cell-lvl1"
+            elif count <= 5: cell_class = "cell-lvl2"
+            elif count <= 10: cell_class = "cell-lvl3"
+            else: cell_class = "cell-lvl4"
+            
+        tooltip = f"{count} solves on {curr.strftime('%b %d, %Y')}"
+        heatmap_days.append({
+            'date': curr,
+            'class': cell_class,
+            'tooltip': tooltip
+        })
+        curr += timedelta(days=1)
+        
+    return render_template(
+        'student.html',
+        student=student,
+        class_rank=class_rank,
+        submissions=submissions,
+        today_solves=today_solves,
+        weekly_solves=weekly_solves,
+        monthly_solves=monthly_solves,
+        graph_dates=graph_dates,
+        graph_counts=graph_counts,
+        heatmap_days=heatmap_days,
+        heatmap_start_date=start_date.strftime('%B %d, %Y'),
+        heatmap_end_date=today_val.strftime('%B %d, %Y')
+    )
+
+@app.route('/compare')
+def compare_view():
+    all_students = Student.query.filter_by(is_active=True).order_by(Student.name).all()
+    s1_id = request.args.get('s1')
+    s2_id = request.args.get('s2')
+    
+    s1 = None
+    s2 = None
+    if s1_id and s2_id:
+        s1 = Student.query.get(s1_id)
+        s2 = Student.query.get(s2_id)
+        
+    return render_template(
+        'compare.html',
+        all_students=all_students,
+        s1=s1,
+        s2=s2
+    )
+
+@app.route('/attendance')
+def attendance_view():
+    today = date.today()
+    month = request.args.get('month', today.month, type=int)
+    year = request.args.get('year', today.year, type=int)
+    
+    num_days = calendar.monthrange(year, month)[1]
+    days = list(range(1, num_days + 1))
+    month_name = f"{calendar.month_name[month]} {year}"
+    
+    students = Student.query.filter_by(is_active=True).order_by(Student.name).all()
+    
+    attendance_records = []
+    for s in students:
+        # Load all snapshots for this student in the target month/year
+        snapshots = DailySnapshot.query.filter(
+            DailySnapshot.student_id == s.id,
+            db.extract('year', DailySnapshot.date) == year,
+            db.extract('month', DailySnapshot.date) == month
+        ).all()
+        
+        snap_map = {snap.date.day: snap.daily_solves for snap in snapshots}
+        
+        days_solved = []
+        total_solves_this_month = 0
+        active_days_count = 0
+        
+        for d in days:
+            solves = snap_map.get(d, 0)
+            if solves > 0:
+                days_solved.append(True)
+                total_solves_this_month += solves
+                active_days_count += 1
+            else:
+                days_solved.append(False)
+                
+        solve_rate = round((active_days_count / num_days) * 100, 1) if num_days > 0 else 0
+        
+        attendance_records.append({
+            'student': s,
+            'days_solved': days_solved,
+            'total_solves_this_month': total_solves_this_month,
+            'solve_rate': solve_rate
+        })
+        
+    months_list = [(i, calendar.month_name[i]) for i in range(1, 13)]
+    years_list = list(range(today.year - 2, today.year + 1))
+    
+    return render_template(
+        'attendance.html',
+        days=days,
+        month_name=month_name,
+        attendance_records=attendance_records,
+        active_month=month,
+        active_year=year,
+        months_list=months_list,
+        years_list=years_list
+    )
+
+@app.route('/search')
+def search_view():
+    query = request.args.get('q', '').strip()
+    students = []
+    if query:
+        # Search by name, username, or register number
+        students = Student.query.filter(
+            Student.is_active == True,
+            (Student.name.like(f"%{query}%")) | 
+            (Student.leetcode_username.like(f"%{query}%")) | 
+            (Student.register_number.like(f"%{query}%"))
+        ).all()
+        
+    return render_template('search.html', students=students, query=query)
+
+@app.route('/admin')
+def admin_view():
+    total_students = Student.query.filter_by(is_active=True).count()
+    last_run_formatted = update_status["last_run"].strftime("%B %d, %I:%M %p") if update_status["last_run"] else "Never"
+    
+    return render_template(
+        'admin.html',
+        total_students=total_students,
+        update_status=update_status,
+        last_run_formatted=last_run_formatted
+    )
+
+# MANUAL SYNC ACTIONS (ASYNC THREAD)
+
+@app.route('/admin/trigger-update', methods=['POST'])
+def trigger_update():
+    if update_status["in_progress"]:
+        return jsonify({"status": "error", "message": "Update already in progress."})
+        
+    # Start thread
+    thread = threading.Thread(target=run_update_task, args=(app,))
+    thread.daemon = True
+    thread.start()
+    return jsonify({"status": "started"})
+
+@app.route('/admin/update-status')
+def get_update_status():
+    status_copy = update_status.copy()
+    if status_copy["last_run"]:
+        status_copy["last_run"] = status_copy["last_run"].strftime("%B %d, %I:%M %p")
+    return jsonify(status_copy)
+
+# EXCEL STUDENT IMPORT
+
+@app.route('/admin/upload', methods=['POST'])
+def upload_excel():
+    if 'file' not in request.files:
+        flash("No file part found.", "error")
+        return redirect(url_for('admin_view'))
+        
+    file = request.files['file']
+    if file.filename == '':
+        flash("No file selected.", "error")
+        return redirect(url_for('admin_view'))
+        
+    if file and file.filename.endswith('.xlsx'):
+        try:
+            import pandas as pd
+            
+            # Save file to uploads folder
+            uploads_dir = os.path.join(app.root_path, 'uploads')
+            if not os.path.exists(uploads_dir):
+                os.makedirs(uploads_dir)
+            file_path = os.path.join(uploads_dir, 'students.xlsx')
+            file.save(file_path)
+            
+            # Parse excel
+            df = pd.read_excel(file_path)
+            
+            # Verify columns (case insensitive header match)
+            headers = [str(col).strip().lower() for col in df.columns]
+            
+            name_idx = -1
+            reg_idx = -1
+            username_idx = -1
+            
+            for idx, h in enumerate(headers):
+                if 'leetcode' in h or 'username' in h:
+                    username_idx = idx
+                elif 'register' in h or 'reg' in h:
+                    reg_idx = idx
+                elif 'name' in h:
+                    name_idx = idx
+                    
+            if name_idx == -1 or reg_idx == -1 or username_idx == -1:
+                flash("Excel must contain 'Name', 'Register Number', and 'LeetCode Username' columns.", "error")
+                return redirect(url_for('admin_view'))
+                
+            added_count = 0
+            updated_count = 0
+            
+            for index, row in df.iterrows():
+                name = str(row.iloc[name_idx]).strip()
+                reg_no = str(row.iloc[reg_idx]).strip()
+                username = str(row.iloc[username_idx]).strip()
+                
+                # Basic validation
+                if not name or not reg_no or not username or name == 'nan' or reg_no == 'nan' or username == 'nan':
+                    continue
+                    
+                # Clean register number to integer-like or string
+                if reg_no.endswith('.0'):
+                    reg_no = reg_no[:-2]
+                    
+                # Check if student exists
+                student = Student.query.filter(
+                    (Student.register_number == reg_no) | 
+                    (Student.leetcode_username == username)
+                ).first()
+                
+                if student:
+                    student.name = name
+                    student.register_number = reg_no
+                    student.leetcode_username = username
+                    student.is_active = True
+                    updated_count += 1
+                else:
+                    new_student = Student(
+                        name=name,
+                        register_number=reg_no,
+                        leetcode_username=username,
+                        is_active=True
+                    )
+                    db.session.add(new_student)
+                    added_count += 1
+                    
+            db.session.commit()
+            flash(f"Successfully uploaded: {added_count} students added, {updated_count} students updated.", "success")
+            
+        except Exception as e:
+            flash(f"Error processing Excel: {e}", "error")
+            
+    else:
+        flash("Invalid file format. Only .xlsx files are supported.", "error")
+        
+    return redirect(url_for('admin_view'))
+
+# EXPORTS & REPORTS DOWNLOAD
+
+@app.route('/admin/download/<format>')
+def download_report(format):
+    students = Student.query.filter_by(is_active=True).order_by(Student.total_solved.desc()).all()
+    
+    # Calculate period solves for report headers
+    today_val = date.today()
+    for s in students:
+        today_snap = DailySnapshot.query.filter_by(student_id=s.id, date=today_val).first()
+        s.today_solves = today_snap.daily_solves if today_snap else 0
+        
+        weekly_snaps = DailySnapshot.query.filter(
+            DailySnapshot.student_id == s.id,
+            DailySnapshot.date >= today_val - timedelta(days=7)
+        ).all()
+        s.weekly_solves = sum(snap.daily_solves for snap in weekly_snaps)
+        
+    if format == 'csv':
+        import csv
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write headers
+        writer.writerow([
+            "Register Number", "Name", "LeetCode Username", "Total Solved", 
+            "Easy", "Medium", "Hard", "Acceptance %", "Current Streak", 
+            "Today's Solves", "Weekly Solves", "Contest Rating", "Last Updated"
+        ])
+        
+        for s in students:
+            writer.writerow([
+                s.register_number, s.name, s.leetcode_username, s.total_solved,
+                s.easy_solved, s.medium_solved, s.hard_solved, s.acceptance_rate,
+                s.current_streak, s.today_solves, s.weekly_solves, s.contest_rating,
+                s.last_updated.isoformat() if s.last_updated else "Never"
+            ])
+            
+        output.seek(0)
+        return send_file(
+            io.BytesIO(output.getvalue().encode('utf-8')),
+            mimetype="text/csv",
+            as_attachment=True,
+            download_name=f"leetcode_report_{today_val.isoformat()}.csv"
+        )
+        
+    elif format == 'excel':
+        # Create Excel file using pandas & xlsxwriter
+        data_list = []
+        for s in students:
+            data_list.append({
+                "Register Number": s.register_number,
+                "Name": s.name,
+                "LeetCode Username": s.leetcode_username,
+                "Total Solved": s.total_solved,
+                "Easy": s.easy_solved,
+                "Medium": s.medium_solved,
+                "Hard": s.hard_solved,
+                "Acceptance %": s.acceptance_rate,
+                "Current Streak": s.current_streak,
+                "Today's Solves": s.today_solves,
+                "Weekly Solves": s.weekly_solves,
+                "Contest Rating": s.contest_rating,
+                "Last Updated": s.last_updated.strftime("%Y-%m-%d %H:%M") if s.last_updated else "Never"
+            })
+            
+        df = pd.DataFrame(data_list)
+        
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, sheet_name="Classroom Solves", index=False)
+            
+            # Format workbook headers nicely using xlsxwriter formats
+            workbook = writer.book
+            worksheet = writer.sheets["Classroom Solves"]
+            
+            header_format = workbook.add_format({
+                'bold': True,
+                'text_wrap': True,
+                'valign': 'top',
+                'fg_color': '#1e293b',
+                'font_color': '#ffffff',
+                'border': 1
+            })
+            
+            for col_num, value in enumerate(df.columns.values):
+                worksheet.write(0, col_num, value, header_format)
+                # Auto-adjust column widths
+                max_len = max(df[value].astype(str).map(len).max(), len(value)) + 3
+                worksheet.set_column(col_num, col_num, max_len)
+                
+        output.seek(0)
+        return send_file(
+            output,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name=f"leetcode_report_{today_val.isoformat()}.xlsx"
+        )
+        
+    elif format == 'pdf':
+        from reportlab.lib.pagesizes import letter
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib import colors
+        
+        output = io.BytesIO()
+        doc = SimpleDocTemplate(
+            output, 
+            pagesize=letter, 
+            rightMargin=25, 
+            leftMargin=25, 
+            topMargin=30, 
+            bottomMargin=30
+        )
+        story = []
+        
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'TitleStyle',
+            parent=styles['Heading1'],
+            fontSize=16,
+            leading=20,
+            textColor=colors.HexColor('#1e293b'),
+            alignment=1, # Center
+            spaceAfter=15
+        )
+        subtitle_style = ParagraphStyle(
+            'SubtitleStyle',
+            parent=styles['Normal'],
+            fontSize=9,
+            textColor=colors.HexColor('#64748b'),
+            alignment=1,
+            spaceAfter=25
+        )
+        
+        story.append(Paragraph("LeetCode Classroom Tracker Report", title_style))
+        story.append(Paragraph(f"Generated on {datetime.now().strftime('%B %d, %Y %I:%M %p')} | Total Solvers: {len(students)}", subtitle_style))
+        
+        # Table Columns: Reg Number, Name, Username, Total, Easy, Medium, Hard, Acceptance %, Current Streak, Contest Rating
+        table_data = [
+            ["Reg No", "Name", "Username", "Total", "Easy", "Med", "Hard", "Acceptance", "Streak", "Rating"]
+        ]
+        
+        for s in students:
+            table_data.append([
+                str(s.register_number),
+                str(s.name),
+                f"@{s.leetcode_username}",
+                str(s.total_solved),
+                str(s.easy_solved),
+                str(s.medium_solved),
+                str(s.hard_solved),
+                f"{s.acceptance_rate}%",
+                f"{s.current_streak}d",
+                str(int(s.contest_rating)) if s.contest_rating > 0 else "-"
+            ])
+            
+        t = Table(table_data, colWidths=[65, 95, 75, 40, 35, 40, 35, 60, 45, 50])
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1e293b')),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('ALIGN', (1,1), (1,-1), 'LEFT'), # Name left
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,0), (-1,0), 9),
+            ('BOTTOMPADDING', (0,0), (-1,0), 6),
+            ('TOPPADDING', (0,0), (-1,0), 6),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#e2e8f0')),
+            ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
+            ('FONTSIZE', (0,1), (-1,-1), 8),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f8fafc')]),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0,1), (-1,-1), 5),
+            ('TOPPADDING', (0,1), (-1,-1), 5),
+        ]))
+        
+        story.append(t)
+        doc.build(story)
+        
+        output.seek(0)
+        return send_file(
+            output,
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=f"leetcode_report_{today_val.isoformat()}.pdf"
+        )
+        
+    flash("Invalid download format.", "error")
+    return redirect(url_for('admin_view'))
+
+# APP RUNNER & DB SETUP
+
+# Create directories and seed database
+with app.app_context():
+    db.create_all()
+    # Check if empty, and maybe inject dummy data helper if user wants, 
+    # but leaving it empty for Excel import is cleaner.
+    
+    # Initialize background scheduler
+    init_scheduler(app)
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)

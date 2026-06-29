@@ -1,0 +1,132 @@
+{% extends 'base.html' %}
+
+{% block title %}Leaderboard | LeetCode Class Tracker{% endblock %}
+
+{% block content %}
+<div class="card-glass p-4 animate-fade-in">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4">
+        <div>
+            <h2 class="mb-1 fs-3"><i class="bi bi-trophy-fill text-warning me-2"></i>Classroom Leaderboard</h2>
+            <p class="text-secondary-custom mb-0">Rankings updated automatically. Filter below to view specific metrics.</p>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="mb-4 overflow-x-auto">
+        <div class="d-flex flex-nowrap gap-2 pb-2">
+            <a href="{{ url_for('leaderboard_view', filter='overall') }}" class="btn-filter {% if active_filter == 'overall' %}active{% else %}inactive{% endif %} text-decoration-none">
+                Overall
+            </a>
+            <a href="{{ url_for('leaderboard_view', filter='today') }}" class="btn-filter {% if active_filter == 'today' %}active{% else %}inactive{% endif %} text-decoration-none">
+                Today
+            </a>
+            <a href="{{ url_for('leaderboard_view', filter='week') }}" class="btn-filter {% if active_filter == 'week' %}active{% else %}inactive{% endif %} text-decoration-none">
+                This Week
+            </a>
+            <a href="{{ url_for('leaderboard_view', filter='month') }}" class="btn-filter {% if active_filter == 'month' %}active{% else %}inactive{% endif %} text-decoration-none">
+                This Month
+            </a>
+            <a href="{{ url_for('leaderboard_view', filter='easy') }}" class="btn-filter {% if active_filter == 'easy' %}active{% else %}inactive{% endif %} text-decoration-none">
+                Easy
+            </a>
+            <a href="{{ url_for('leaderboard_view', filter='medium') }}" class="btn-filter {% if active_filter == 'medium' %}active{% else %}inactive{% endif %} text-decoration-none">
+                Medium
+            </a>
+            <a href="{{ url_for('leaderboard_view', filter='hard') }}" class="btn-filter {% if active_filter == 'hard' %}active{% else %}inactive{% endif %} text-decoration-none">
+                Hard
+            </a>
+            <a href="{{ url_for('leaderboard_view', filter='acceptance') }}" class="btn-filter {% if active_filter == 'acceptance' %}active{% else %}inactive{% endif %} text-decoration-none">
+                Acceptance %
+            </a>
+            <a href="{{ url_for('leaderboard_view', filter='rating') }}" class="btn-filter {% if active_filter == 'rating' %}active{% else %}inactive{% endif %} text-decoration-none">
+                Contest Rating
+            </a>
+        </div>
+    </div>
+
+    <!-- Leaderboard Table -->
+    <div class="table-responsive">
+        <table class="table table-custom">
+            <thead>
+                <tr>
+                    <th scope="col" style="width: 70px;">Rank</th>
+                    <th scope="col">Name / Reg No</th>
+                    <th scope="col" class="text-center">Total</th>
+                    <th scope="col" class="text-center">Easy</th>
+                    <th scope="col" class="text-center">Medium</th>
+                    <th scope="col" class="text-center">Hard</th>
+                    <th scope="col" class="text-center">Acceptance</th>
+                    <th scope="col" class="text-center">Streak</th>
+                    <th scope="col" class="text-center">Contest Rating</th>
+                    <th scope="col" class="text-center">Last Updated</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for student in students %}
+                <tr>
+                    <td class="fw-bold fs-5 text-secondary-custom">
+                        {% if loop.index == 1 %}
+                        🥇
+                        {% elif loop.index == 2 %}
+                        🥈
+                        {% elif loop.index == 3 %}
+                        🥉
+                        {% else %}
+                        #{{ loop.index }}
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{{ url_for('student_profile', student_id=student.id) }}" class="fw-bold text-decoration-none text-reset d-flex align-items-center">
+                            <img src="{{ student.avatar_url or 'https://assets.leetcode.com/users/default_avatar.png' }}" alt="{{ student.name }}" class="rounded-circle me-3" style="width: 40px; height: 40px; object-fit: cover;">
+                            <div>
+                                <div class="fs-6">{{ student.name }}</div>
+                                <div class="fs-7 text-secondary-custom fw-normal">@{{ student.leetcode_username }} | {{ student.register_number }}</div>
+                            </div>
+                        </a>
+                    </td>
+                    <td class="text-center fw-extrabold fs-5 text-easy">
+                        {{ student.total_solved }}
+                        {% if student.today_solves > 0 and active_filter == 'today' %}
+                        <div class="fs-7 text-warning mt-1">+{{ student.today_solves }} today</div>
+                        {% elif student.weekly_solves > 0 and active_filter == 'week' %}
+                        <div class="fs-7 text-info mt-1">+{{ student.weekly_solves }} this week</div>
+                        {% elif student.monthly_solves > 0 and active_filter == 'month' %}
+                        <div class="fs-7 text-success mt-1">+{{ student.monthly_solves }} this month</div>
+                        {% endif %}
+                    </td>
+                    <td class="text-center text-easy fw-semibold">{{ student.easy_solved }}</td>
+                    <td class="text-center text-medium fw-semibold">{{ student.medium_solved }}</td>
+                    <td class="text-center text-hard fw-semibold">{{ student.hard_solved }}</td>
+                    <td class="text-center font-monospace fw-semibold">{{ student.acceptance_rate }}%</td>
+                    <td class="text-center font-monospace fw-bold">
+                        {% if student.current_streak > 0 %}
+                        {{ student.current_streak }}🔥
+                        <div class="fs-7 text-secondary-custom fw-normal mt-1">max: {{ student.max_streak }}d</div>
+                        {% else %}
+                        <span class="text-secondary-custom">0</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center font-monospace text-warning fw-bold">
+                        {% if student.contest_rating > 0 %}
+                        {{ student.contest_rating }}
+                        {% else %}
+                        <span class="text-secondary-custom">-</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center text-secondary-custom fs-7">
+                        {{ student.time_ago }}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="10" class="text-center text-secondary-custom py-5">
+                        <i class="bi bi-emoji-neutral display-6 mb-3"></i>
+                        <p>No students found in the leaderboard.</p>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

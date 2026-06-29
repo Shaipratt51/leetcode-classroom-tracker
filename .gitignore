@@ -1,0 +1,8 @@
+.venv/
+__pycache__/
+instance/
+*.db
+uploads/students_temp.xlsx
+temp.xlsx
+*.pyc
+.DS_Store

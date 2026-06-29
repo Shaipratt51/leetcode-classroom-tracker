@@ -1,0 +1,230 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard | LeetCode Class Tracker{% endblock %}
+
+{% block content %}
+<div class="row g-4 mb-4 animate-fade-in">
+    <!-- Stats Cards -->
+    <div class="col-md-4">
+        <div class="card-glass p-4 text-center h-100 d-flex flex-column justify-content-center">
+            <span class="fs-6 fw-semibold text-secondary-custom text-uppercase mb-2">Total Students</span>
+            <span class="display-4 fw-extrabold text-easy">{{ total_students }}</span>
+            <span class="fs-7 text-secondary-custom mt-2"><i class="bi bi-people-fill"></i> Active members</span>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card-glass p-4 text-center h-100 d-flex flex-column justify-content-center">
+            <span class="fs-6 fw-semibold text-secondary-custom text-uppercase mb-2">Today's Solves</span>
+            <span class="display-4 fw-extrabold text-warning">{{ today_solves }}</span>
+            <span class="fs-7 text-secondary-custom mt-2"><i class="bi bi-graph-up-arrow"></i> Problems solved today</span>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card-glass p-4 text-center h-100 d-flex flex-column justify-content-center">
+            <span class="fs-6 fw-semibold text-secondary-custom text-uppercase mb-2">Total Solves</span>
+            <span class="display-4 fw-extrabold text-info">{{ total_solves }}</span>
+            <span class="fs-7 text-secondary-custom mt-2"><i class="bi bi-database-check"></i> Classroom aggregate</span>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Main Dashboard Body (Left Col) -->
+    <div class="col-lg-8 animate-fade-in" style="animation-delay: 0.1s;">
+        <!-- Top Leaderboard Snippet -->
+        <div class="card-glass p-4 mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h3 class="mb-0 fs-4"><i class="bi bi-award-fill text-warning me-2"></i>Top Classroom Solvers</h3>
+                <a href="{{ url_for('leaderboard_view') }}" class="btn btn-sm btn-outline-easy fw-semibold rounded-pill px-3">
+                    View All <i class="bi bi-arrow-right"></i>
+                </a>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table table-custom">
+                    <thead>
+                        <tr>
+                            <th scope="col" style="width: 80px;">Rank</th>
+                            <th scope="col">Name</th>
+                            <th scope="col" class="text-center">Total Solved</th>
+                            <th scope="col" class="text-center">Today</th>
+                            <th scope="col" class="text-center">Streak</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for student in top_students %}
+                        <tr>
+                            <td class="fw-bold fs-5 text-secondary-custom">
+                                {% if loop.index == 1 %}
+                                🥇
+                                {% elif loop.index == 2 %}
+                                🥈
+                                {% elif loop.index == 3 %}
+                                🥉
+                                {% else %}
+                                #{{ loop.index }}
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{{ url_for('student_profile', student_id=student.id) }}" class="fw-bold text-decoration-none text-reset d-flex align-items-center">
+                                    <img src="{{ student.avatar_url or 'https://assets.leetcode.com/users/default_avatar.png' }}" alt="{{ student.name }}" class="rounded-circle me-3" style="width: 32px; height: 32px; object-fit: cover;">
+                                    <div>
+                                        <div class="fs-6">{{ student.name }}</div>
+                                        <div class="fs-7 text-secondary-custom fw-normal">@{{ student.leetcode_username }}</div>
+                                    </div>
+                                </a>
+                            </td>
+                            <td class="text-center fw-extrabold fs-6 text-easy">{{ student.total_solved }}</td>
+                            <td class="text-center">
+                                {% if student.today_solves > 0 %}
+                                <span class="badge bg-warning text-dark font-monospace fw-bold">+{{ student.today_solves }}</span>
+                                {% else %}
+                                <span class="text-secondary-custom">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center font-monospace fw-bold fs-6">
+                                {% if student.current_streak > 0 %}
+                                {{ student.current_streak }}🔥
+                                {% else %}
+                                <span class="text-secondary-custom">0</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center text-secondary-custom py-5">
+                                <i class="bi bi-emoji-neutral display-6 mb-3"></i>
+                                <p>No students found. Add some in the Admin Panel.</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Weekly Report block -->
+        {% if weekly_report %}
+        <div class="card-glass p-4 mb-4">
+            <h3 class="mb-4 fs-4"><i class="bi bi-calendar-event-fill text-info me-2"></i>Weekly Classroom Summary</h3>
+            <div class="row g-3">
+                <div class="col-sm-6">
+                    <div class="p-3 border border-secondary border-opacity-10 rounded-3">
+                        <div class="fs-7 text-secondary-custom mb-1"><i class="bi bi-trophy text-warning"></i> Top Solver</div>
+                        <div class="fs-6 fw-bold">{{ weekly_report.top_solver }}</div>
+                    </div>
+                </div>
+                <div class="col-sm-6">
+                    <div class="p-3 border border-secondary border-opacity-10 rounded-3">
+                        <div class="fs-7 text-secondary-custom mb-1"><i class="bi bi-graph-up text-easy"></i> Most Active</div>
+                        <div class="fs-6 fw-bold">{{ weekly_report.most_active }}</div>
+                    </div>
+                </div>
+                <div class="col-sm-6">
+                    <div class="p-3 border border-secondary border-opacity-10 rounded-3">
+                        <div class="fs-7 text-secondary-custom mb-1"><i class="bi bi-star-fill text-info"></i> Top Improvement</div>
+                        <div class="fs-6 fw-bold">{{ weekly_report.top_improvement }}</div>
+                    </div>
+                </div>
+                <div class="col-sm-6">
+                    <div class="p-3 border border-secondary border-opacity-10 rounded-3">
+                        <div class="fs-7 text-secondary-custom mb-1"><i class="bi bi-calculator text-success"></i> Solves Average</div>
+                        <div class="fs-6 fw-bold">{{ weekly_report.problems_solved }} solves (Avg: {{ weekly_report.average_solves }} / student)</div>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div class="p-3 border border-secondary border-opacity-10 rounded-3">
+                        <div class="fs-7 text-secondary-custom mb-1"><i class="bi bi-slash-circle text-danger"></i> Inactive Members this Week</div>
+                        <div class="fs-7 text-danger fw-semibold">{{ weekly_report.inactive_members }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Recent Activity Feed -->
+        <div class="card-glass p-4">
+            <h3 class="mb-4 fs-4"><i class="bi bi-activity text-easy me-2"></i>Recent Activity Feed</h3>
+            <div class="pe-2" style="max-height: 450px; overflow-y: auto;">
+                {% for sub in recent_submissions %}
+                <div class="feed-item {% if sub.difficulty == 'Easy' %}easy{% elif sub.difficulty == 'Hard' %}hard{% else %}medium{% endif %} animate-fade-in" style="animation-delay: {{ loop.index * 0.05 }}s;">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="fw-bold">{{ sub.student.name }}</span> 
+                            <span class="text-secondary-custom">solved</span>
+                            <a href="https://leetcode.com/problems/{{ sub.title_slug }}" target="_blank" class="fw-semibold text-decoration-none text-reset ms-1">
+                                {{ sub.title }}
+                            </a>
+                        </div>
+                        <span class="badge-difficulty bg-{% if sub.difficulty == 'Easy' %}easy{% elif sub.difficulty == 'Hard' %}hard{% else %}medium{% endif %} text-dark">
+                            {{ sub.difficulty }}
+                        </span>
+                    </div>
+                    <div class="fs-7 text-secondary-custom mt-1">
+                        <i class="bi bi-clock me-1"></i>{{ sub.time_ago }}
+                    </div>
+                </div>
+                {% else %}
+                <div class="text-center text-secondary-custom py-4">
+                    <p>No recent submissions fetched yet. Trigger an update in the Admin Panel.</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar Info Panel (Right Col) -->
+    <div class="col-lg-4 animate-fade-in" style="animation-delay: 0.2s;">
+        <!-- Daily Challenge Card -->
+        <div class="card-glass p-4 mb-4 text-center border-warning border-opacity-20">
+            <span class="fs-7 badge bg-warning text-dark mb-3 px-3 py-2 rounded-pill fw-bold text-uppercase tracking-wider">
+                <i class="bi bi-lightning-charge-fill"></i> LeetCode Daily Challenge
+            </span>
+            {% if daily_challenge %}
+            <h4 class="mb-2">{{ daily_challenge.title }}</h4>
+            <div class="mb-3">
+                <span class="badge bg-{% if daily_challenge.difficulty == 'Easy' %}easy{% elif daily_challenge.difficulty == 'Hard' %}hard{% else %}medium{% endif %} text-dark">
+                    {{ daily_challenge.difficulty }}
+                </span>
+            </div>
+            
+            <a href="https://leetcode.com/problems/{{ daily_challenge.title_slug }}/" target="_blank" class="btn btn-easy text-dark fw-bold rounded-pill w-100 mb-3">
+                Solve Challenge <i class="bi bi-box-arrow-up-right ms-1"></i>
+            </a>
+            
+            <!-- Completion rate in class -->
+            <div class="fs-7 text-secondary-custom">
+                Class Completion: <span class="text-easy fw-bold">{{ challenge_completed_count }} / {{ total_students }}</span>
+            </div>
+            {% else %}
+            <h4>Two Sum</h4>
+            <div class="mb-3">
+                <span class="badge bg-easy text-dark">Easy</span>
+            </div>
+            <a href="https://leetcode.com/problems/two-sum/" target="_blank" class="btn btn-easy text-dark fw-bold rounded-pill w-100">
+                Solve Challenge <i class="bi bi-box-arrow-up-right ms-1"></i>
+            </a>
+            {% endif %}
+        </div>
+
+        <!-- Notification Feed -->
+        <div class="card-glass p-4">
+            <h3 class="mb-3 fs-5"><i class="bi bi-bell-fill text-warning me-2"></i>Milestones & Logs</h3>
+            <div class="pe-2" style="max-height: 400px; overflow-y: auto;">
+                {% for notif in notifications %}
+                <div class="p-3 mb-2 rounded-3 border border-secondary border-opacity-10 bg-black bg-opacity-10">
+                    <div class="fs-6 fw-semibold text-light mb-1">{{ notif.content }}</div>
+                    <div class="fs-7 text-secondary-custom font-monospace">{{ notif.time_ago }}</div>
+                </div>
+                {% else %}
+                <div class="text-center text-secondary-custom py-4">
+                    <p>No notifications generated yet.</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

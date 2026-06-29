@@ -1,0 +1,191 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ student.name }} | LeetCode Class Tracker{% endblock %}
+
+{% block content %}
+<div class="row g-4 mb-4 animate-fade-in">
+    <!-- Student Header & Overview -->
+    <div class="col-12">
+        <div class="card-glass p-4 border-opacity-20 d-flex flex-column flex-md-row justify-content-between align-items-md-center">
+            <div class="d-flex align-items-center">
+                <img src="{{ student.avatar_url or 'https://assets.leetcode.com/users/default_avatar.png' }}" alt="{{ student.name }}" class="rounded-circle me-4 border border-secondary border-opacity-20" style="width: 80px; height: 80px; object-fit: cover;">
+                <div>
+                    <h2 class="mb-1">{{ student.name }}</h2>
+                    <p class="text-secondary-custom mb-2">@{{ student.leetcode_username }} | Reg No: {{ student.register_number }}</p>
+                    <a href="https://leetcode.com/{{ student.leetcode_username }}" target="_blank" class="btn btn-sm btn-outline-easy fw-semibold rounded-pill px-3">
+                        LeetCode Profile <i class="bi bi-box-arrow-up-right ms-1"></i>
+                    </a>
+                </div>
+            </div>
+            
+            <div class="mt-4 mt-md-0 d-flex gap-4">
+                <div class="text-center">
+                    <div class="fs-7 text-secondary-custom text-uppercase fw-semibold mb-1">Class Rank</div>
+                    <div class="fs-3 fw-extrabold text-easy">#{{ class_rank }}</div>
+                </div>
+                <div class="text-center">
+                    <div class="fs-7 text-secondary-custom text-uppercase fw-semibold mb-1">Current Streak</div>
+                    <div class="fs-3 fw-extrabold text-warning">{{ student.current_streak }}🔥</div>
+                </div>
+                <div class="text-center">
+                    <div class="fs-7 text-secondary-custom text-uppercase fw-semibold mb-1">Contest Rating</div>
+                    <div class="fs-3 fw-extrabold text-info">
+                        {% if student.contest_rating > 0 %}
+                        {{ student.contest_rating }}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <!-- Detail Cards (Left) -->
+    <div class="col-lg-4 animate-fade-in" style="animation-delay: 0.1s;">
+        <div class="card-glass p-4 h-100">
+            <h3 class="fs-5 mb-4"><i class="bi bi-pie-chart-fill text-easy me-2"></i>Solve Stats</h3>
+            
+            <div class="d-flex justify-content-between mb-3 border-bottom border-secondary border-opacity-10 pb-2">
+                <span class="text-secondary-custom">Total Solved</span>
+                <span class="fw-bold fs-5 text-easy">{{ student.total_solved }}</span>
+            </div>
+            <div class="d-flex justify-content-between mb-3 border-bottom border-secondary border-opacity-10 pb-2">
+                <span class="text-secondary-custom">Easy Solved</span>
+                <span class="fw-bold text-easy">{{ student.easy_solved }}</span>
+            </div>
+            <div class="d-flex justify-content-between mb-3 border-bottom border-secondary border-opacity-10 pb-2">
+                <span class="text-secondary-custom">Medium Solved</span>
+                <span class="fw-bold text-medium">{{ student.medium_solved }}</span>
+            </div>
+            <div class="d-flex justify-content-between mb-3 border-bottom border-secondary border-opacity-10 pb-2">
+                <span class="text-secondary-custom">Hard Solved</span>
+                <span class="fw-bold text-hard">{{ student.hard_solved }}</span>
+            </div>
+            <div class="d-flex justify-content-between mb-3 border-bottom border-secondary border-opacity-10 pb-2">
+                <span class="text-secondary-custom">Acceptance %</span>
+                <span class="fw-bold font-monospace">{{ student.acceptance_rate }}%</span>
+            </div>
+            <div class="d-flex justify-content-between mb-3 border-bottom border-secondary border-opacity-10 pb-2">
+                <span class="text-secondary-custom">Max Streak</span>
+                <span class="fw-bold text-warning">{{ student.max_streak }} days</span>
+            </div>
+            <div class="d-flex justify-content-between mb-3 border-bottom border-secondary border-opacity-10 pb-2">
+                <span class="text-secondary-custom">Solves Today</span>
+                <span class="fw-bold text-warning">+{{ today_solves }}</span>
+            </div>
+            <div class="d-flex justify-content-between mb-3 border-bottom border-secondary border-opacity-10 pb-2">
+                <span class="text-secondary-custom">Weekly Solves</span>
+                <span class="fw-bold text-info">+{{ weekly_solves }}</span>
+            </div>
+            <div class="d-flex justify-content-between">
+                <span class="text-secondary-custom">Monthly Solves</span>
+                <span class="fw-bold text-success">+{{ monthly_solves }}</span>
+            </div>
+
+            <!-- Problem Difficulty Chart (Bar) -->
+            <h4 class="fs-6 mt-4 mb-3">Difficulty Breakdown</h4>
+            {% set total = student.easy_solved + student.medium_solved + student.hard_solved %}
+            {% set easy_pct = (student.easy_solved / total * 100) if total > 0 else 0 %}
+            {% set med_pct = (student.medium_solved / total * 100) if total > 0 else 0 %}
+            {% set hard_pct = (student.hard_solved / total * 100) if total > 0 else 0 %}
+            
+            <div class="progress rounded-pill mb-3" style="height: 16px;">
+                <div class="progress-bar bg-easy" role="progressbar" style="width: {{ easy_pct }}%" aria-valuenow="{{ easy_pct }}" aria-valuemin="0" aria-valuemax="100" title="Easy"></div>
+                <div class="progress-bar bg-medium" role="progressbar" style="width: {{ med_pct }}%" aria-valuenow="{{ med_pct }}" aria-valuemin="0" aria-valuemax="100" title="Medium"></div>
+                <div class="progress-bar bg-hard" role="progressbar" style="width: {{ hard_pct }}%" aria-valuenow="{{ hard_pct }}" aria-valuemin="0" aria-valuemax="100" title="Hard"></div>
+            </div>
+            <div class="d-flex justify-content-between fs-7 text-secondary-custom font-monospace">
+                <span>Easy: {{ student.easy_solved }}</span>
+                <span>Medium: {{ student.medium_solved }}</span>
+                <span>Hard: {{ student.hard_solved }}</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Progress Line Graph (Right) -->
+    <div class="col-lg-8 animate-fade-in" style="animation-delay: 0.2s;">
+        <div class="card-glass p-4 h-100">
+            <h3 class="fs-5 mb-4"><i class="bi bi-graph-up text-easy me-2"></i>Progress (Past 30 Days)</h3>
+            <div style="height: 320px; position: relative;">
+                <canvas id="progressChart" data-dates="{{ graph_dates }}" data-counts="{{ graph_counts }}"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- GitHub Heatmap Calendar -->
+<div class="row g-4 mb-4">
+    <div class="col-12 animate-fade-in" style="animation-delay: 0.3s;">
+        <div class="card-glass p-4">
+            <h3 class="fs-5 mb-3"><i class="bi bi-grid-3x3-gap-fill text-easy me-2"></i>LeetCode Activity Heatmap</h3>
+            <div class="heatmap-container">
+                <div class="heatmap-grid" style="grid-auto-flow: column;">
+                    {% for day in heatmap_days %}
+                    <div class="heatmap-cell {{ day.class }}" data-tooltip="{{ day.tooltip }}"></div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mt-3 fs-7 text-secondary-custom">
+                <span>{{ heatmap_start_date }} &rarr; {{ heatmap_end_date }}</span>
+                <div class="d-flex align-items-center gap-1">
+                    <span>Less</span>
+                    <div class="heatmap-cell cell-empty" style="cursor: default;"></div>
+                    <div class="heatmap-cell cell-lvl1" style="cursor: default;"></div>
+                    <div class="heatmap-cell cell-lvl2" style="cursor: default;"></div>
+                    <div class="heatmap-cell cell-lvl3" style="cursor: default;"></div>
+                    <div class="heatmap-cell cell-lvl4" style="cursor: default;"></div>
+                    <span>More</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent 20 Submissions List -->
+<div class="row g-4">
+    <div class="col-12 animate-fade-in" style="animation-delay: 0.4s;">
+        <div class="card-glass p-4">
+            <h3 class="fs-5 mb-4"><i class="bi bi-blockquote-left text-easy me-2"></i>Recent 20 Submissions</h3>
+            <div class="table-responsive">
+                <table class="table table-custom">
+                    <thead>
+                        <tr>
+                            <th scope="col">Title</th>
+                            <th scope="col" class="text-center">Difficulty</th>
+                            <th scope="col" class="text-center">Solved Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for sub in submissions %}
+                        <tr>
+                            <td class="fw-bold">
+                                <a href="https://leetcode.com/problems/{{ sub.title_slug }}" target="_blank" class="text-decoration-none text-reset">
+                                    {{ sub.title }} <i class="bi bi-box-arrow-up-right text-secondary-custom fs-7"></i>
+                                </a>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge-difficulty bg-{% if sub.difficulty == 'Easy' %}easy{% elif sub.difficulty == 'Hard' %}hard{% else %}medium{% endif %} text-dark">
+                                    {{ sub.difficulty }}
+                                </span>
+                            </td>
+                            <td class="text-center text-secondary-custom">
+                                {{ sub.time_ago }}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="3" class="text-center text-secondary-custom py-4">
+                                No submissions tracked. Trigger updates in the Admin Panel.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
