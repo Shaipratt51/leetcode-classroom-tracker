@@ -9,8 +9,16 @@ from scheduler import init_scheduler, run_update_task, update_status, generate_w
 from leetcode import fetch_leetcode_data, parse_submission_calendar
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'lc-classroom-tracker-secret-1234'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'lc-classroom-tracker-secret-1234')
+
+# Dynamic database configuration (supports Render persistent disk)
+db_url = os.environ.get('DATABASE_URL')
+if not db_url:
+    if os.path.exists('/data'):
+        db_url = 'sqlite:////data/database.db'
+    else:
+        db_url = 'sqlite:///database.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = db_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
