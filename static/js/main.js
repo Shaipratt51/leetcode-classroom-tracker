@@ -1,33 +1,11 @@
 document.addEventListener("DOMContentLoaded", () => {
-    // 1. Light/Dark Theme Controller
-    const themeToggleBtn = document.getElementById("themeToggleBtn");
-    const themeIcon = document.getElementById("themeIcon");
-    const currentTheme = localStorage.getItem("theme") || "dark"; // Default to dark theme
-
-    // Apply the saved theme on page load
-    applyTheme(currentTheme);
-
-    if (themeToggleBtn) {
-        themeToggleBtn.addEventListener("click", () => {
-            const activeTheme = document.body.classList.contains("dark-theme") ? "light" : "dark";
-            applyTheme(activeTheme);
-        });
-    }
+    // 1. Light Theme Controller (Forced light theme)
+    applyTheme("light");
 
     function applyTheme(theme) {
-        if (theme === "dark") {
-            document.body.classList.remove("light-theme");
-            document.body.classList.add("dark-theme");
-            if (themeIcon) themeIcon.className = "bi bi-sun-fill";
-        } else {
-            document.body.classList.remove("dark-theme");
-            document.body.classList.add("light-theme");
-            if (themeIcon) themeIcon.className = "bi bi-moon-stars-fill";
-        }
-        localStorage.setItem("theme", theme);
-        
-        // Dispatch event so active charts can re-draw with correct text/grid colors if needed
-        window.dispatchEvent(new Event('theme-changed'));
+        document.body.classList.remove("dark-theme");
+        document.body.classList.add("light-theme");
+        localStorage.setItem("theme", "light");
     }
 
     // 2. Setup Student Profile Progress Chart
@@ -36,8 +14,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const rawDates = JSON.parse(progressChartEl.dataset.dates || "[]");
         const rawCounts = JSON.parse(progressChartEl.dataset.counts || "[]");
 
-        let textCol = document.body.classList.contains("dark-theme") ? "#f8fafc" : "#1e293b";
-        let gridCol = document.body.classList.contains("dark-theme") ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
+        let textCol = "#1e293b";
+        let gridCol = "rgba(0,0,0,0.08)";
 
         const ctx = progressChartEl.getContext("2d");
         const chart = new Chart(ctx, {
@@ -89,16 +67,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             }
         });
-
-        // Re-theme chart on theme changes
-        window.addEventListener('theme-changed', () => {
-            const dark = document.body.classList.contains("dark-theme");
-            chart.options.scales.x.ticks.color = dark ? "#f8fafc" : "#1e293b";
-            chart.options.scales.y.ticks.color = dark ? "#f8fafc" : "#1e293b";
-            chart.options.scales.x.grid.color = dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
-            chart.options.scales.y.grid.color = dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
-            chart.update();
-        });
     }
 
     // 3. Setup Student Compare Radar Chart
@@ -113,8 +81,8 @@ document.addEventListener("DOMContentLoaded", () => {
         // Stats format: [Total, Easy, Medium, Hard, Acceptance, Streak, ContestRating/10]
         const labels = ["Total Solved", "Easy", "Medium", "Hard", "Acceptance %", "Streak", "Contest Rating"];
         
-        let textCol = document.body.classList.contains("dark-theme") ? "#f8fafc" : "#1e293b";
-        let gridCol = document.body.classList.contains("dark-theme") ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
+        let textCol = "#1e293b";
+        let gridCol = "rgba(0,0,0,0.08)";
 
         const ctx = compareChartEl.getContext("2d");
         const chart = new Chart(ctx, {
@@ -163,7 +131,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             font: {
                                 size: 11,
                                 weight: '600'
-                            }
+                             }
                         },
                         ticks: {
                             backdropColor: "transparent",
@@ -173,16 +141,6 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                 }
             }
-        });
-
-        // Re-theme radar chart
-        window.addEventListener('theme-changed', () => {
-            const dark = document.body.classList.contains("dark-theme");
-            chart.options.plugins.legend.labels.color = dark ? "#f8fafc" : "#1e293b";
-            chart.options.scales.r.angleLines.color = dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
-            chart.options.scales.r.grid.color = dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)";
-            chart.options.scales.r.pointLabels.color = dark ? "#f8fafc" : "#1e293b";
-            chart.update();
         });
     }
 });
