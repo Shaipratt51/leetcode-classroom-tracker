@@ -159,7 +159,7 @@ def admin_login():
         email = request.form.get('email', '').strip()
         password = request.form.get('password', '').strip()
         
-        if email == 'test123@gmail.com' and password == 'admin123@':
+        if email == 'test456@gmail.com' and password == 'admin456@':
             session['is_admin'] = True
             flash("Admin login successful!", "success")
             return redirect(url_for('admin_view'))
