@@ -88,13 +88,18 @@ def fetch_daily_challenge():
 
 @app.before_request
 def require_login():
-    # Allowed endpoints without login
-    allowed_endpoints = ['login_route', 'static', 'admin_view', 'trigger_update', 'download_report', 'scan_uploads', 'get_update_status']
-    
+    # 1. Admin endpoints protection
+    if request.path.startswith('/admin') and request.endpoint != 'admin_login':
+        if not session.get('is_admin'):
+            return redirect(url_for('admin_login'))
+        return # Skip student check for admin
+        
+    # 2. Student endpoints protection
+    allowed_endpoints = ['login_route', 'admin_login', 'static']
     if request.endpoint and request.endpoint in allowed_endpoints:
         return
         
-    if request.path.startswith('/admin') or request.path.startswith('/static'):
+    if request.path.startswith('/static'):
         return
         
     if 'student_id' not in session:
@@ -133,6 +138,31 @@ def logout_route():
     session.pop('student_id', None)
     flash("You have successfully logged out.", "success")
     return redirect(url_for('login_route'))
+
+@app.route('/admin/login', methods=['GET', 'POST'])
+def admin_login():
+    if session.get('is_admin'):
+        return redirect(url_for('admin_view'))
+        
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '').strip()
+        
+        if email == 'test123@gmail.com' and password == 'admin123@':
+            session['is_admin'] = True
+            flash("Admin login successful!", "success")
+            return redirect(url_for('admin_view'))
+        else:
+            flash("Invalid admin credentials.", "error")
+            return redirect(url_for('admin_login'))
+            
+    return render_template('admin_login.html')
+
+@app.route('/admin/logout')
+def admin_logout():
+    session.pop('is_admin', None)
+    flash("Admin logged out successfully.", "success")
+    return redirect(url_for('admin_login'))
 
 @app.route('/')
 def dashboard():
@@ -502,14 +532,16 @@ def admin_view():
         detected_files=detected_files
     )
 
-@app.route('/admin/scan-uploads', methods=['POST'])
+@app.route('/admin/scan-uploads', methods=['GET', 'POST'])
+@app.route('/admin/scan_uploads', methods=['GET', 'POST'])
 def scan_uploads():
-    try:
-        from seed_db import seed_classmates
-        seed_classmates()
-        flash("Class databases scanned and synced successfully.", "success")
-    except Exception as e:
-        flash(f"Error scanning uploads: {e}", "error")
+    if request.method == 'POST':
+        try:
+            from seed_db import seed_classmates
+            seed_classmates()
+            flash("Class databases scanned and synced successfully.", "success")
+        except Exception as e:
+            flash(f"Error scanning uploads: {e}", "error")
     return redirect(url_for('admin_view'))
 
 # MANUAL SYNC ACTIONS (ASYNC THREAD)

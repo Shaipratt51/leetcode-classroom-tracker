@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login | LeetCode Class Tracker</title>
+    <title>Admin Login | LeetCode Class Tracker</title>
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -35,12 +35,12 @@
         <div class="card-glass login-card animate-fade-in">
             <!-- Branding -->
             <div class="d-flex align-items-center justify-content-center mb-4">
-                <span class="text-easy fs-1 me-2"><i class="bi bi-code-slash"></i></span>
-                <span class="fs-2 fw-extrabold text-uppercase tracking-wider text-light">LC Tracker</span>
+                <span class="text-easy fs-1 me-2"><i class="bi bi-shield-lock-fill"></i></span>
+                <span class="fs-2 fw-extrabold text-uppercase tracking-wider text-light">Admin Access</span>
             </div>
             
-            <h3 class="mb-2 text-light">Classroom Login</h3>
-            <p class="text-secondary-custom fs-7 mb-4">Enter your college registration number to access the LeetCode classroom statistics dashboard.</p>
+            <h3 class="mb-2 text-light">Portal Login</h3>
+            <p class="text-secondary-custom fs-7 mb-4">Enter administrative credentials to manage stats updates and download reports.</p>
             
             <!-- Error messages -->
             {% with messages = get_flashed_messages(with_categories=true) %}
@@ -54,19 +54,29 @@
                 {% endif %}
             {% endwith %}
 
-            <form action="{{ url_for('login_route') }}" method="POST" class="text-start">
-                <div class="mb-4">
-                    <label for="register_number" class="form-label fw-semibold text-secondary-custom fs-7">Registration Number</label>
+            <form action="{{ url_for('admin_login') }}" method="POST" class="text-start">
+                <div class="mb-3">
+                    <label for="email" class="form-label fw-semibold text-secondary-custom fs-7">Admin Email</label>
                     <div class="input-group">
                         <span class="input-group-text input-group-text-custom text-secondary-custom" style="border-radius: 20px 0 0 20px; border-right: none;">
-                            <i class="bi bi-person-fill"></i>
+                            <i class="bi bi-envelope-fill"></i>
                         </span>
-                        <input type="text" class="form-control login-input py-2 fs-6" id="register_number" name="register_number" placeholder="Enter your registration number" required style="border-radius: 0 20px 20px 0; border-left: none;">
+                        <input type="email" class="form-control login-input py-2 fs-6" id="email" name="email" placeholder="test123@gmail.com" required style="border-radius: 0 20px 20px 0; border-left: none;">
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <label for="password" class="form-label fw-semibold text-secondary-custom fs-7">Password</label>
+                    <div class="input-group">
+                        <span class="input-group-text input-group-text-custom text-secondary-custom" style="border-radius: 20px 0 0 20px; border-right: none;">
+                            <i class="bi bi-lock-fill"></i>
+                        </span>
+                        <input type="password" class="form-control login-input py-2 fs-6" id="password" name="password" placeholder="••••••••" required style="border-radius: 0 20px 20px 0; border-left: none;">
                     </div>
                 </div>
                 
                 <button type="submit" class="btn btn-easy text-dark fw-bold rounded-pill w-100 py-2.5 mt-2 fs-6">
-                    Enter Dashboard <i class="bi bi-arrow-right ms-1"></i>
+                    Login Admin <i class="bi bi-arrow-right ms-1"></i>
                 </button>
             </form>
         </div>
