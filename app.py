@@ -173,12 +173,14 @@ def dashboard():
         sub.time_ago = time_ago(sub.timestamp)
 
     # Notifications feed for class
+    raw_notifications = Notification.query.order_by(Notification.timestamp.desc()).limit(60).all()
     notifications = []
-    if classmate_ids:
-        notifications = Notification.query.join(Student).filter(
-            Student.department == class_dept,
-            Student.academic_year == class_year
-        ).order_by(Notification.timestamp.desc()).limit(15).all()
+    classmate_names = {s.name for s in classmates}
+    for notif in raw_notifications:
+        if any(name in notif.content for name in classmate_names) or "Weekly Report" in notif.content:
+            notifications.append(notif)
+            if len(notifications) >= 15:
+                break
     for notif in notifications:
         notif.time_ago = time_ago(notif.timestamp)
 
