@@ -3,6 +3,28 @@ from datetime import datetime
 
 db = SQLAlchemy()
 
+DEPT_MAP = {
+    "104": "CSE",
+    "205": "IT",
+    "118": "CCE",
+    "148": "AI ML",
+    "149": "CYBER"
+}
+
+YEAR_MAP = {
+    "23": 4,
+    "24": 3,
+    "25": 2
+}
+
+def parse_registration_number(reg_no):
+    reg_str = str(reg_no).strip()
+    if len(reg_str) < 12:
+        return "Unknown", 0
+    join_year_code = reg_str[4:6]
+    dept_code = reg_str[6:9]
+    return DEPT_MAP.get(dept_code, "Unknown"), YEAR_MAP.get(join_year_code, 0)
+
 class Student(db.Model):
     __tablename__ = 'students'
     
@@ -10,6 +32,9 @@ class Student(db.Model):
     name = db.Column(db.String(100), nullable=False)
     register_number = db.Column(db.String(50), unique=True, nullable=False)
     leetcode_username = db.Column(db.String(100), unique=True, nullable=False)
+    
+    department = db.Column(db.String(50), nullable=True)
+    academic_year = db.Column(db.Integer, nullable=True)
     
     total_solved = db.Column(db.Integer, default=0)
     easy_solved = db.Column(db.Integer, default=0)
@@ -37,6 +62,8 @@ class Student(db.Model):
             'name': self.name,
             'register_number': self.register_number,
             'leetcode_username': self.leetcode_username,
+            'department': self.department,
+            'academic_year': self.academic_year,
             'total_solved': self.total_solved,
             'easy_solved': self.easy_solved,
             'medium_solved': self.medium_solved,

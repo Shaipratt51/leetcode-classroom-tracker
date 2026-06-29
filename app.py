@@ -3,7 +3,7 @@ import io
 import threading
 import calendar
 from datetime import datetime, date, timezone, timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_file, session, g
 from models import db, Student, Submission, DailySnapshot, Notification, WeeklyReport
 from scheduler import init_scheduler, run_update_task, update_status, generate_weekly_report
 from leetcode import fetch_leetcode_data, parse_submission_calendar
@@ -86,31 +86,99 @@ def fetch_daily_challenge():
 
 # ROUTES
 
+@app.before_request
+def require_login():
+    # Allowed endpoints without login
+    allowed_endpoints = ['login_route', 'static', 'admin_view', 'trigger_update', 'download_report', 'scan_uploads', 'get_update_status']
+    
+    if request.endpoint and request.endpoint in allowed_endpoints:
+        return
+        
+    if request.path.startswith('/admin') or request.path.startswith('/static'):
+        return
+        
+    if 'student_id' not in session:
+        return redirect(url_for('login_route'))
+        
+    g.current_student = Student.query.get(session['student_id'])
+    if not g.current_student:
+        session.pop('student_id', None)
+        return redirect(url_for('login_route'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login_route():
+    if 'student_id' in session:
+        student = Student.query.get(session['student_id'])
+        if student:
+            return redirect(url_for('dashboard'))
+            
+    if request.method == 'POST':
+        reg_no = request.form.get('register_number', '').strip()
+        if reg_no.endswith('.0'):
+            reg_no = reg_no[:-2]
+            
+        student = Student.query.filter_by(register_number=reg_no).first()
+        if student:
+            session['student_id'] = student.id
+            flash(f"Welcome back, {student.name}!", "success")
+            return redirect(url_for('dashboard'))
+        else:
+            flash("Registration number not found in database. Please contact your instructor/administrator.", "error")
+            return redirect(url_for('login_route'))
+            
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout_route():
+    session.pop('student_id', None)
+    flash("You have successfully logged out.", "success")
+    return redirect(url_for('login_route'))
+
 @app.route('/')
 def dashboard():
-    total_students = Student.query.filter_by(is_active=True).count()
+    class_dept = g.current_student.department
+    class_year = g.current_student.academic_year
     
-    # Calculate classroom aggregates
-    total_solves = db.session.query(db.func.sum(Student.total_solved)).scalar() or 0
+    # Filter students in class
+    classmates = Student.query.filter_by(department=class_dept, academic_year=class_year, is_active=True).all()
+    total_students = len(classmates)
+    classmate_ids = [s.id for s in classmates]
     
-    # Today's solves
+    # Calculate classroom aggregates for classmates
+    total_solves = 0
+    if classmate_ids:
+        total_solves = db.session.query(db.func.sum(Student.total_solved)).filter(Student.id.in_(classmate_ids)).scalar() or 0
+    
+    # Today's solves for classmates
     today_date = date.today()
-    today_solves = db.session.query(db.func.sum(DailySnapshot.daily_solves)).filter(DailySnapshot.date == today_date).scalar() or 0
+    today_solves = 0
+    if classmate_ids:
+        today_solves = db.session.query(db.func.sum(DailySnapshot.daily_solves)).filter(
+            DailySnapshot.student_id.in_(classmate_ids),
+            DailySnapshot.date == today_date
+        ).scalar() or 0
     
-    # Top 5 solvers for leaderboard snippet
-    top_students = Student.query.filter_by(is_active=True).order_by(Student.total_solved.desc()).limit(5).all()
+    # Top 5 solvers for class leaderboard snippet
+    top_students = Student.query.filter_by(department=class_dept, academic_year=class_year, is_active=True).order_by(Student.total_solved.desc()).limit(5).all()
     # Add dynamic today's solves to top students
     for student in top_students:
         snap = DailySnapshot.query.filter_by(student_id=student.id, date=today_date).first()
         student.today_solves = snap.daily_solves if snap else 0
 
-    # Recent submissions feed (Instagram-like)
-    recent_submissions = Submission.query.order_by(Submission.timestamp.desc()).limit(25).all()
+    # Recent submissions feed for class
+    recent_submissions = []
+    if classmate_ids:
+        recent_submissions = Submission.query.filter(Submission.student_id.in_(classmate_ids)).order_by(Submission.timestamp.desc()).limit(25).all()
     for sub in recent_submissions:
         sub.time_ago = time_ago(sub.timestamp)
 
-    # Notifications feed (milestones crossed)
-    notifications = Notification.query.order_by(Notification.timestamp.desc()).limit(15).all()
+    # Notifications feed for class
+    notifications = []
+    if classmate_ids:
+        notifications = Notification.query.join(Student).filter(
+            Student.department == class_dept,
+            Student.academic_year == class_year
+        ).order_by(Notification.timestamp.desc()).limit(15).all()
     for notif in notifications:
         notif.time_ago = time_ago(notif.timestamp)
 
@@ -120,11 +188,14 @@ def dashboard():
     # Daily challenge details
     daily_challenge = fetch_daily_challenge()
     
-    # Count of students who completed the daily challenge today
-    challenge_completed_count = db.session.query(Submission.student_id).filter(
-        Submission.title_slug == daily_challenge['title_slug'],
-        db.func.date(Submission.timestamp) == today_date
-    ).distinct().count()
+    # Count of classmates who completed the daily challenge today
+    challenge_completed_count = 0
+    if classmate_ids:
+        challenge_completed_count = db.session.query(Submission.student_id).filter(
+            Submission.student_id.in_(classmate_ids),
+            Submission.title_slug == daily_challenge['title_slug'],
+            db.func.date(Submission.timestamp) == today_date
+        ).distinct().count()
 
     return render_template(
         'dashboard.html',
@@ -142,7 +213,19 @@ def dashboard():
 @app.route('/leaderboard')
 def leaderboard_view():
     active_filter = request.args.get('filter', 'overall')
-    students = Student.query.filter_by(is_active=True).all()
+    dept = request.args.get('dept', 'ALL').strip().upper()
+    year = request.args.get('year', 'ALL').strip()
+    
+    query = Student.query.filter_by(is_active=True)
+    if dept != 'ALL':
+        query = query.filter_by(department=dept)
+    if year != 'ALL':
+        try:
+            query = query.filter_by(academic_year=int(year))
+        except ValueError:
+            pass
+            
+    students = query.all()
     
     today_val = date.today()
     seven_days_ago = today_val - timedelta(days=7)
@@ -189,7 +272,9 @@ def leaderboard_view():
     return render_template(
         'leaderboard.html',
         students=students,
-        active_filter=active_filter
+        active_filter=active_filter,
+        active_dept=dept,
+        active_year=year
     )
 
 @app.route('/student/<int:student_id>')
@@ -313,7 +398,9 @@ def attendance_view():
     days = list(range(1, num_days + 1))
     month_name = f"{calendar.month_name[month]} {year}"
     
-    students = Student.query.filter_by(is_active=True).order_by(Student.name).all()
+    class_dept = g.current_student.department
+    class_year = g.current_student.academic_year
+    students = Student.query.filter_by(department=class_dept, academic_year=class_year, is_active=True).order_by(Student.name).all()
     
     attendance_records = []
     for s in students:
@@ -382,12 +469,46 @@ def admin_view():
     total_students = Student.query.filter_by(is_active=True).count()
     last_run_formatted = update_status["last_run"].strftime("%B %d, %I:%M %p") if update_status["last_run"] else "Never"
     
+    # Scan uploads/ folder for Excel sheets
+    detected_files = []
+    uploads_dir = os.path.join(app.root_path, 'uploads')
+    if os.path.exists(uploads_dir):
+        for f in os.listdir(uploads_dir):
+            if f.endswith('.xlsx') and not f.startswith('~$') and not f.startswith('temp_'):
+                name_without_ext = os.path.splitext(f)[0]
+                dept = "Unknown"
+                year = "Parsed"
+                if '_' in name_without_ext:
+                    parts = name_without_ext.split('_')
+                    if len(parts) == 2:
+                        dept = parts[0].strip().upper()
+                        try:
+                            year = int(parts[1].strip())
+                        except:
+                            pass
+                detected_files.append({
+                    'name': f,
+                    'dept': dept,
+                    'year': year
+                })
+                
     return render_template(
         'admin.html',
         total_students=total_students,
         update_status=update_status,
-        last_run_formatted=last_run_formatted
+        last_run_formatted=last_run_formatted,
+        detected_files=detected_files
     )
+
+@app.route('/admin/scan-uploads', methods=['POST'])
+def scan_uploads():
+    try:
+        from seed_db import seed_classmates
+        seed_classmates()
+        flash("Class databases scanned and synced successfully.", "success")
+    except Exception as e:
+        flash(f"Error scanning uploads: {e}", "error")
+    return redirect(url_for('admin_view'))
 
 # MANUAL SYNC ACTIONS (ASYNC THREAD)
 

@@ -38,6 +38,39 @@
                 </div>
             </div>
         </div>
+
+        <!-- Class Database Scanner Card -->
+        <div class="card-glass p-4 mt-4">
+            <h3 class="fs-4 mb-3"><i class="bi bi-folder-fill text-warning me-2"></i>Class Database Scanner</h3>
+            <p class="text-secondary-custom fs-7 mb-4">
+                Scan your <code>uploads/</code> directory for class student Excel files (named like <code>IT_4.xlsx</code> or <code>CSE_3.xlsx</code>). 
+                Syncing will automatically update or import classroom rosters.
+            </p>
+            
+            <div class="mb-4">
+                <span class="fs-7 fw-semibold text-secondary-custom d-block mb-2">Detected Class Files:</span>
+                {% if detected_files %}
+                    <ul class="list-group list-group-flush fs-7 bg-transparent">
+                        {% for f in detected_files %}
+                            <li class="list-group-item bg-transparent text-light border-secondary border-opacity-10 px-0 d-flex justify-content-between align-items-center">
+                                <span><i class="bi bi-file-earmark-spreadsheet-fill text-success me-2 text-decoration-none"></i>{{ f.name }}</span>
+                                <span class="badge bg-secondary rounded-pill fs-8">{{ f.dept }} - Year {{ f.year }}</span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <div class="text-center py-3 border border-secondary border-opacity-10 rounded text-secondary-custom fs-7">
+                        <i class="bi bi-info-circle me-1"></i> No Excel sheets found in uploads/ folder.
+                    </div>
+                {% endif %}
+            </div>
+            
+            <form action="{{ url_for('scan_uploads') }}" method="POST">
+                <button type="submit" class="btn btn-easy text-dark fw-bold rounded-pill px-4">
+                    <i class="bi bi-search me-1"></i> Scan & Sync Class Databases
+                </button>
+            </form>
+        </div>
     </div>
 
     <!-- Status & Sync Panel (Right) -->

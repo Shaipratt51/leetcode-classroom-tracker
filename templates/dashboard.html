@@ -7,9 +7,9 @@
     <!-- Stats Cards -->
     <div class="col-md-4">
         <div class="card-glass p-4 text-center h-100 d-flex flex-column justify-content-center">
-            <span class="fs-6 fw-semibold text-secondary-custom text-uppercase mb-2">Total Students</span>
-            <span class="display-4 fw-extrabold text-easy">{{ total_students }}</span>
-            <span class="fs-7 text-secondary-custom mt-2"><i class="bi bi-people-fill"></i> Active members</span>
+            <span class="fs-6 fw-semibold text-secondary-custom text-uppercase mb-2">Classroom</span>
+            <span class="display-5 fw-extrabold text-easy">{{ g.current_student.department }} - {{ g.current_student.academic_year }}{% if g.current_student.academic_year == 2 %}nd{% elif g.current_student.academic_year == 3 %}rd{% else %}th{% endif %} Yr</span>
+            <span class="fs-7 text-secondary-custom mt-2"><i class="bi bi-mortarboard-fill"></i> Mapped class database</span>
         </div>
     </div>
     

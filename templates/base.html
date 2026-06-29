@@ -63,6 +63,17 @@
                     </div>
                 </form>
 
+                {% if g.current_student %}
+                <div class="d-flex align-items-center me-3">
+                    <span class="fs-7 fw-semibold text-secondary-custom me-2 d-none d-md-inline">
+                        Hi, <span class="text-easy">{{ g.current_student.name }}</span> ({{ g.current_student.department }}_{{ g.current_student.academic_year }})
+                    </span>
+                    <a href="{{ url_for('logout_route') }}" class="btn btn-sm btn-outline-danger rounded-pill px-3 py-1 fw-bold fs-8">
+                        <i class="bi bi-box-arrow-right"></i> Logout
+                    </a>
+                </div>
+                {% endif %}
+
                 <!-- Theme Switcher -->
                 <button class="btn-theme-toggle" id="themeToggleBtn" title="Toggle Light/Dark Mode">
                     <i class="bi bi-sun-fill" id="themeIcon"></i>

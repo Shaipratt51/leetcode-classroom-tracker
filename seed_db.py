@@ -1,44 +1,70 @@
 import os
 import shutil
+import subprocess
 import pandas as pd
 from app import app, db
-from models import Student, Submission, DailySnapshot, Notification, WeeklyReport
+from models import Student, parse_registration_number
 
 def seed_classmates():
     with app.app_context():
         print("Clearing all existing database records...")
-        # Reset database tables
         db.drop_all()
         db.create_all()
         print("Database schema reset successfully.")
         
-        excel_path = os.path.join(app.root_path, 'uploads', 'students.xlsx')
-        temp_excel_path = os.path.join(app.root_path, 'uploads', 'students_temp.xlsx')
+        uploads_dir = os.path.join(app.root_path, 'uploads')
+        if not os.path.exists(uploads_dir):
+            print("Uploads folder not found.")
+            return
+            
+        files = os.listdir(uploads_dir)
+        # Exclude lock files and temporary items
+        xlsx_files = [f for f in files if f.endswith('.xlsx') and not f.startswith('~$') and not f.startswith('temp_')]
         
-        if os.path.exists(excel_path):
-            print(f"Reading student list from {excel_path}...")
+        if not xlsx_files:
+            print("No Excel files found in uploads/ folder.")
+            return
+            
+        total_added = 0
+        for f in xlsx_files:
+            file_path = os.path.join(uploads_dir, f)
+            temp_path = os.path.join(uploads_dir, f"temp_{f}")
+            
+            # Determine dept and year from filename or default
+            dept_from_filename = None
+            year_from_filename = None
+            
+            # Check if name is like DEPT_YEAR.xlsx (e.g. IT_4.xlsx)
+            name_without_ext = os.path.splitext(f)[0]
+            if '_' in name_without_ext:
+                parts = name_without_ext.split('_')
+                if len(parts) == 2:
+                    dept_from_filename = parts[0].strip().upper()
+                    try:
+                        year_from_filename = int(parts[1].strip())
+                    except ValueError:
+                        pass
+            
+            print(f"Processing class file: {f} ...")
             try:
-                # Bypass Windows Excel file locks by copying via PowerShell
-                import subprocess
+                # Bypass Windows Excel file locks using PowerShell Copy-Item
                 subprocess.run(
-                    ["powershell", "-Command", f"Copy-Item -Path '{excel_path}' -Destination '{temp_excel_path}' -Force"],
+                    ["powershell", "-Command", f"Copy-Item -Path '{file_path}' -Destination '{temp_path}' -Force"],
                     check=True,
                     capture_output=True
                 )
-                df = pd.read_excel(temp_excel_path)
-                # Remove temp file immediately
-                if os.path.exists(temp_excel_path):
-                    os.remove(temp_excel_path)
+                df = pd.read_excel(temp_path)
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
             except Exception as e:
-                print(f"Error copying/reading Excel: {e}")
-                if os.path.exists(temp_excel_path):
+                print(f"Error copying/reading Excel {f}: {e}")
+                if os.path.exists(temp_path):
                     try:
-                        os.remove(temp_excel_path)
+                        os.remove(temp_path)
                     except:
                         pass
-                return
+                continue
                 
-            # Find column indexes
             headers = [str(col).strip().lower() for col in df.columns]
             name_idx = -1
             reg_idx = -1
@@ -53,45 +79,65 @@ def seed_classmates():
                     name_idx = idx
                     
             if name_idx == -1 or reg_idx == -1 or username_idx == -1:
-                print("Error: Excel must contain 'Name', 'Register Number', and 'LeetCode Username' columns.")
-                return
+                print(f"Skipping {f}: Column headers 'Name', 'Register Number', and 'LeetCode Username' not found.")
+                continue
                 
             added_count = 0
+            updated_count = 0
             for index, row in df.iterrows():
                 name = str(row.iloc[name_idx]).strip()
                 reg_no = str(row.iloc[reg_idx]).strip()
                 username = str(row.iloc[username_idx]).strip()
                 
-                # Validation
                 if not name or not reg_no or not username or name == 'nan' or reg_no == 'nan' or username == 'nan':
                     continue
                     
                 if reg_no.endswith('.0'):
                     reg_no = reg_no[:-2]
                     
-                # Check for duplicates before adding
+                # Determine department and year
+                dept = dept_from_filename
+                year = year_from_filename
+                
+                # If not determined by filename, parse registration number
+                if not dept or not year:
+                    parsed_dept, parsed_year = parse_registration_number(reg_no)
+                    if not dept:
+                        dept = parsed_dept
+                    if not year:
+                        year = parsed_year
+                
+                # Check for duplicate
                 existing = Student.query.filter(
-                    (Student.register_number == reg_no) | 
+                    (Student.register_number == reg_no) |
                     (Student.leetcode_username == username)
                 ).first()
                 
                 if existing:
-                    print(f"Skipping duplicate: {name} ({reg_no} / {username})")
-                    continue
+                    existing.name = name
+                    existing.register_number = reg_no
+                    existing.leetcode_username = username
+                    existing.department = dept
+                    existing.academic_year = year
+                    existing.is_active = True
+                    updated_count += 1
+                else:
+                    student = Student(
+                        name=name,
+                        register_number=reg_no,
+                        leetcode_username=username,
+                        department=dept,
+                        academic_year=year,
+                        is_active=True
+                    )
+                    db.session.add(student)
+                    added_count += 1
                     
-                student = Student(
-                    name=name,
-                    register_number=reg_no,
-                    leetcode_username=username,
-                    is_active=True
-                )
-                db.session.add(student)
-                added_count += 1
-                
             db.session.commit()
-            print(f"Database seeded with {added_count} classmates successfully.")
-        else:
-            print("Template Excel file not found. Place students.xlsx in uploads/ directory.")
+            print(f"Loaded from {f} -> Added: {added_count}, Updated: {updated_count} (Class: {dept or 'Unknown'}_{year or 0}).")
+            total_added += added_count
+            
+        print(f"Database sync complete. Total new students inserted: {total_added}.")
 
 if __name__ == '__main__':
     seed_classmates()
